@@ -3,6 +3,7 @@ import pandas as pd
 import requests
 import ta
 import plotly.graph_objs as go
+from streamlit_autorefresh import st_autorefresh
 import time
 
 st.set_page_config(page_title="Ultra Real-Time Scalping Bot", layout="wide")
@@ -11,12 +12,8 @@ st.title("⚡️ Ultra Real-Time Scalping Crypto Bot (Sinyal TP/SL Dinamis)")
 symbol = st.text_input("Pair (BTCUSDT, ETHUSDT, dst):", value="BTCUSDT").upper()
 interval = "1m"
 n_candles = 50
-
 refresh_rate = st.slider("Frekuensi Update Otomatis (detik)", 2, 60, 5)
-
-placeholder_chart = st.empty()
-placeholder_signal = st.empty()
-placeholder_table = st.empty()
+count = st_autorefresh(interval=refresh_rate*1000, key="datarefresh")  # <-- ini counter unique tiap refresh
 
 def fetch_ohlc(symbol, interval="1m", limit=50):
     url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}"
@@ -55,35 +52,33 @@ def realtime_scalping_signal(df):
 
     return signal, entry, tp, sl, atr
 
-while True:
-    try:
-        df = fetch_ohlc(symbol, interval=interval, limit=n_candles)
-        signal, entry, tp, sl, atr = realtime_scalping_signal(df)
+try:
+    df = fetch_ohlc(symbol, interval=interval, limit=n_candles)
+    signal, entry, tp, sl, atr = realtime_scalping_signal(df)
 
-        # Chart
-        fig = go.Figure([
-            go.Candlestick(x=df['open_time'], open=df['open'], high=df['high'],
-                           low=df['low'], close=df['close'], name="Price"),
-        ])
-        placeholder_chart.plotly_chart(fig, use_container_width=True)
+    # gunakan key dinamis dengan count
+    st.plotly_chart(
+        go.Figure([
+            go.Candlestick(
+                x=df['open_time'], open=df['open'], high=df['high'],
+                low=df['low'], close=df['close'], name="Price"
+            ),
+        ]),
+        use_container_width=True,
+        key=f"chart_{count}"  # key unik setiap refresh!
+    )
 
-        # Output signal
-        placeholder_signal.markdown(f"""
-        ### 🚦 Sinyal Scalping Real-Time [{symbol}]
-        - **Sinyal:** `{signal}`
-        - **Entry:** `{entry:.4f}`
-        - **Take Profit (TP):** `{tp:.4f}`
-        - **Stop Loss (SL):** `{sl:.4f}`
-        - **ATR 5m:** `{atr:.6f}`
-        - **Update**: {pd.Timestamp.now(tz='UTC').strftime('%Y-%m-%d %H:%M:%S')} UTC
-        """)
+    st.markdown(f"""
+    ### 🚦 Sinyal Scalping Real-Time [{symbol}]
+    - **Sinyal:** `{signal}`
+    - **Entry:** `{entry:.4f}`
+    - **Take Profit (TP):** `{tp:.4f}`
+    - **Stop Loss (SL):** `{sl:.4f}`
+    - **ATR 5m:** `{atr:.6f}`
+    - **Update**: {pd.Timestamp.now(tz='UTC').strftime('%Y-%m-%d %H:%M:%S')} UTC
+    """, unsafe_allow_html=True)
 
-        # Table data terakhir
-        placeholder_table.dataframe(df.tail(5)[['open_time','close','high','low','volume']])
+    st.dataframe(df.tail(5)[['open_time','close','high','low','volume']], use_container_width=True, key=f"table_{count}")
 
-        # Auto-refresh setiap X detik
-        time.sleep(refresh_rate)
-
-    except Exception as e:
-        st.error(f"Error: {e}")
-        break
+except Exception as e:
+    st.error(f"Error: {e}")
